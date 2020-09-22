@@ -1,0 +1,10 @@
+#------------------------------------------------------------------------------
+# Project : KeyV
+# File    : .synopsys_dc.setup
+# Author  : Mickael Fiorentino <mickael.fiorentino@polymtl.ca>
+# Lab     : GRM - Polytechnique Montreal
+# Date    : <2020-02-27 Thu>
+# Brief   : Synopsys configuration file
+#------------------------------------------------------------------------------
+set designer "Mickael Fiorentino"
+set company  "GRM - Polytechnique Montreal"

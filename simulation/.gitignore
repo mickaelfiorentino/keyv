@@ -1,0 +1,13 @@
+transcript
+modelsim.ini
+*.mpf
+*.mti
+*.wlf
+.log
+*.csd
+*.vcd
+*.saif
+*.mem
+**/*_lib/
+**/*work/
+*.log

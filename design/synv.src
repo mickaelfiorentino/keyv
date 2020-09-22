@@ -1,0 +1,13 @@
+stdcells/stdcells.vhd
+stdcells/tsmc65.vhd
+generic/rv32_pkg.vhd
+synv/synv_pkg.vhd
+generic/pc.vhd
+generic/idecode.vhd
+generic/rf.vhd
+generic/lsu.vhd
+generic/perf.vhd
+generic/sys.vhd
+synv/alu.vhd
+synv/clock_and_reset.vhd
+synv/synv_core.vhd
