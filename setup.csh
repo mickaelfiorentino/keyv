@@ -41,23 +41,42 @@ setenv KEYV_SW             ${KEYV_HOME}/software
 setenv KEYV_SW_BENCH       ${KEYV_SW}/benchmark
 setenv KEYV_SW_FIRM        ${KEYV_SW}/firmware
 setenv KEYV_SW_TOOL        ${KEYV_SW}/toolchain
+setenv KEYV_SW_SIM         ${KEYV_SW}/simulator
+setenv KEYV_SW_EXT         ${KEYV_SW}/external
 setenv KEYV_SW_BENCH_BASIC ${KEYV_SW_BENCH}/basic
 setenv KEYV_SW_BENCH_FIBO  ${KEYV_SW_BENCH}/fibo
 setenv KEYV_SW_BENCH_DHRY  ${KEYV_SW_BENCH}/dhrystone
 setenv KEYV_SW_BENCH_CM    ${KEYV_SW_BENCH}/coremark
 
 #-----------------------------------------------------------------------------
+# TSMC65GP KIT
+#-----------------------------------------------------------------------------
+setenv KEYV_TSMC65GP_HOME          ${CMC_HOME}/kits/tsmc_65nm_libs/tcbn65gplus_200a/TSMCHOME/digital
+setenv KEYV_TSMC65GP_FE            ${KEYV_TSMC65GP_HOME}/Front_End
+setenv KEYV_TSMC65GP_BE            ${KEYV_TSMC65GP_HOME}/Back_End
+setenv KEYV_TSMC65GP_FE_TIM_LIB    ${KEYV_TSMC65GP_FE}/timing_power_noise/CCS/tcbn65gplus_200a
+setenv KEYV_TSMC65GP_BE_LEF_LIB    ${KEYV_TSMC65GP_BE}/lef/tcbn65gplus_200a/lef
+setenv KEYV_TSMC65GP_BE_CAPTBL_DIR ${KEYV_TSMC65GP_BE}/lef/tcbn65gplus_200a/techfiles/captable
+setenv KEYV_TSMC65GP_BE_MW_LIB     ${KEYV_TSMC65GP_BE}/milkyway/tcbn65gplus_200a
+setenv KEYV_TSMC65GP_SIMLIB        /export/tmp/fiorentino/kits/lib/sim
+
+#-----------------------------------------------------------------------------
 # EDA TOOLS
 #-----------------------------------------------------------------------------
 
-# GCC
+# GCC 9
 if ( `gcc -dumpversion | cut -f1 -d.` < 9 ) then
     source /users/support/config/gcc/default_cfg
 endif
 
-# PYTHON 3
-if ( `where python3` == "" ) then
+# PYTHON 3.7
+if ( `python3 --version | cut -d ' ' -f2` != "3.7.2" ) then
     source /users/support/config/python/python-372
+endif
+
+# TCLSH 8.6
+if ( `where tclsh8.6` == "" ) then
+    source /users/support/config/tcltk/default_cfg
 endif
 
 # RISCV

@@ -26,36 +26,46 @@ end entity click;
 
 architecture xor_arch of click is
 
-  signal key, keyn, keyf    : std_logic;
-  signal clk, rn, sn, stall : std_logic;
-  signal xor_e, xor_s       : std_logic;
-  signal clkb, keyb         : std_logic;
-  signal pulsew             : std_logic_vector(KEYRING_P downto 0);
-  signal stallw             : std_logic_vector(KEYRING_P downto 0);
+  signal key, keyn, keyf      : std_logic;
+  signal clk, rn, sn, stall   : std_logic;
+  signal xor_e, xor_s         : std_logic;
+  signal clkb, keyb_c, keyb_d : std_logic;
+  signal pulsew               : std_logic_vector(KEYRING_P downto 0);
 
   constant INIT : std_logic := init_key(E,S);
 
 begin
 
   -- OUTPUTS
-  o_click.key <= keyb;
-  o_click.clk <= clkb;
+  o_click.key_c  <= keyb_c;  -- Output key (clock path)
+  o_click.key_d  <= keyb_d;  -- Output key (data path)
+  o_click.clk    <= clkb;    -- clock
 
   -- CLK/KEY BUFFERS
-  u_clkbuf: CLKBUF port map (Y => clkb, A => clk);
-  u_keybuf: CLKBUF port map (Y => keyb, A => key);
+  u_clkb   : CLKBUF port map (Y => clkb, A => clk);
+  u_keyb_c : CLKBUF port map (Y => keyb_c, A => key);
+  u_keyb_d : INV1 port map   (Y => keyb_d, A => keyn);
 
   -- PULSE-WIDTH BUFFERS
-  pulsew(0) <= key;
+  pulsew(0) <= keyb_c;
   g_pulsew: for i in 1 to KEYRING_P generate
     u_pulsew: CLKBUF port map (Y => pulsew(i), A => pulsew(i-1));
   end generate g_pulsew;
 
   -- STALL BUFFERS (Delayed stall to avoid races @R)
-  stallw(0) <= i_click.stall;
-  g_stallw: for i in 1 to KEYRING_P generate
-    u_stallw: CLKBUF port map (Y => stallw(i), A => stallw(i-1));
-  end generate g_stallw;
+  g_stall : if S = 2 generate
+    constant STALL_DEL : positive := 10;
+    signal stallw      : std_logic_vector(STALL_DEL-1 downto 0);
+  begin
+    stallw(0) <= i_click.stall;
+    stall     <= stallw(STALL_DEL-1);
+    g_stallw : for i in 1 to STALL_DEL-1 generate
+      u_stallw : CLKBUF port map (Y => stallw(i), A => stallw(i-1));
+    end generate g_stallw;
+  end generate g_stall;
+  g_nstall : if S /= 2 generate
+    u_stallw : CLKBUF port map (Y => stall, A => i_click.stall);
+  end generate g_nstall;
 
   -- FEEDBACK (START)
   g_start : if INIT = '1' generate
@@ -68,7 +78,7 @@ begin
   -- CONTROL
   u_xor_e : XOR21 port map (Y => xor_e, A => i_click.key_e, B => keyf);
   u_xor_s : XOR21 port map (Y => xor_s, A => i_click.key_s, B => keyf);
-  u_clk   : NOR31 port map (Y => clk, A => xor_e, B => xor_s, C => stallw(KEYRING_P));
+  u_clk   : NOR31 port map (Y => clk, A => xor_e, B => xor_s, C => stall);
 
   -- RESET
   u_rn : OR21 port map (Y => rn, A => INIT, B => i_rstn);

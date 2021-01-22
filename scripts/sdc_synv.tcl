@@ -10,10 +10,8 @@ package require Tcl 8.6
 package require kVutils
 package require kVsyn
 
-global TIMING_LIB_SLOW
-global TIMING_LIB_FAST
-global OPERATING_CONDITIONS_MAX
-global OPERATING_CONDITIONS_MIN
+global TIMING_LIB
+global OPCOND
 global CELLS_IO_CELL
 global CELLS_IO_DRIVE
 global CELLS_IO_LOAD
@@ -22,7 +20,7 @@ global CELLS_CK_CELL
 #----------------------------------------------------------------------------
 # DESIGN CONSTRAINTS
 #----------------------------------------------------------------------------
-set_operating_conditions -max $OPERATING_CONDITIONS_MAX -min $OPERATING_CONDITIONS_MIN
+set_operating_conditions -max $OPCOND -min $OPCOND
 
 # Flatten the design and keep top-level hierarchy
 ungroup -all -flatten -start_level 2
@@ -36,7 +34,6 @@ set_ideal_network [get_pins u_clock_and_reset/o_rstn]
 set PERIOD       2
 set SETUP_MARGIN 0.1
 set HOLD_MARGIN  0.1
-set TRANS_MARGIN 0.1
 set IO_MARGIN    0.2
 
 # Input clock: Feeding clock_and_reset module
@@ -57,7 +54,6 @@ create_generated_clock -name $main_clk -edges {1 2 3} \
 foreach_in_collection clk [get_clocks *] {
     set_clock_uncertainty -setup -from $clk -to $clk $SETUP_MARGIN
     set_clock_uncertainty -hold  -from $clk -to $clk $HOLD_MARGIN
-    set_clock_transition $TRANS_MARGIN $clk
 }
 
 # Propagate clocks to add clock-tree estimations in timing
@@ -74,8 +70,8 @@ set_input_delay  -clock [get_clock synv_clk] $IO_MARGIN $IPORTS
 set_output_delay -clock [get_clock synv_clk] $IO_MARGIN $OPORTS
 
 # I/O Drive/Load
-set_driving_cell -library $TIMING_LIB_SLOW -lib_cell $CELLS_IO_CELL -pin $CELLS_IO_DRIVE $IPORTS
-set_load [expr 5 * [load_of ${TIMING_LIB_SLOW}/${CELLS_IO_CELL}/${CELLS_IO_LOAD}]] $OPORTS
+set_driving_cell -library $TIMING_LIB -lib_cell $CELLS_IO_CELL -pin $CELLS_IO_DRIVE $IPORTS
+set_load [expr 5 * [load_of ${TIMING_LIB}/${CELLS_IO_CELL}/${CELLS_IO_LOAD}]] $OPORTS
 
 #----------------------------------------------------------------------------
 # COST GROUPS

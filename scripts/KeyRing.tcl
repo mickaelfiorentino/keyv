@@ -32,6 +32,7 @@ oo::class create KeyRing {
     variable E; # Number of EUs
     variable S; # Number of stages per EU
     variable D; # Dependency shift between two stages of successive EUs
+    variable verbose
 }
 oo::define KeyRing {
 
@@ -41,7 +42,9 @@ oo::define KeyRing {
     #    Deletes the KeyRing object
     #-------------------------------------------------------------------------
     destructor {
-        puts "Deleting the KeyRing object [self]"
+        if { $verbose } {
+            puts "Deleting the KeyRing object [self]"
+        }
     }
 
     #-------------------------------------------------------------------------
@@ -50,12 +53,16 @@ oo::define KeyRing {
     #   Generates the KeyRing object
     #   <e> x <s> clicks with dependency shift <d>
     #-------------------------------------------------------------------------
-    constructor {e s d} {
+    constructor {e s d {v 0}} {
+
+        set verbose $v
 
         if { [expr $d * $e] != $s } {
             error "Wrong KeyRing configuration: $s =/= $e x $d"
         }
-        puts "Creating the KeyRing object [self] $e x $s ($d)"
+        if { $verbose } {
+            puts "Creating the KeyRing object [self] $e x $s ($d)"
+        }
 
         set E $e
         set S $s
@@ -97,7 +104,7 @@ oo::define KeyRing {
     #-------------------------------------------------------------------------
     method InitClick { e s } {
 
-        set l [string trim [self] ::]
+        set l [my get_keyring_name]
         dict set K C_${l}_${e}${s} parent(left) [my get_neighbor ${e} ${s} -left]
         dict set K C_${l}_${e}${s} parent(up)   [my get_neighbor ${e} ${s} -up]
         dict set K C_${l}_${e}${s} child(right) [my get_neighbor ${e} ${s} -right]
@@ -106,23 +113,27 @@ oo::define KeyRing {
         dict set K C_${l}_${e}${s} pulse        0
         dict set K C_${l}_${e}${s} margin       setup  0
         dict set K C_${l}_${e}${s} margin       hold   0
-        dict set K C_${l}_${e}${s} clk_launch   left   C_${l}_${e}${s}_setup_left_launch
-        dict set K C_${l}_${e}${s} clk_launch   up     C_${l}_${e}${s}_setup_up_launch
-        dict set K C_${l}_${e}${s} clk_launch   right  C_${l}_${e}${s}_hold_right_launch
-        dict set K C_${l}_${e}${s} clk_launch   down   C_${l}_${e}${s}_hold_down_launch
-        dict set K C_${l}_${e}${s} clk_capture  left   C_${l}_${e}${s}_setup_left_capture
-        dict set K C_${l}_${e}${s} clk_capture  up     C_${l}_${e}${s}_setup_up_capture
-        dict set K C_${l}_${e}${s} clk_capture  right  C_${l}_${e}${s}_hold_right_capture
-        dict set K C_${l}_${e}${s} clk_capture  down   C_${l}_${e}${s}_hold_down_capture
-        dict set K C_${l}_${e}${s} clk_root     clk    C_${l}_${e}${s}_clk
-        dict set K C_${l}_${e}${s} clk_root     key    C_${l}_${e}${s}_key
+        dict set K C_${l}_${e}${s} clk_launch   left        C_${l}_${e}${s}_setup_left_launch
+        dict set K C_${l}_${e}${s} clk_launch   up          C_${l}_${e}${s}_setup_up_launch
+        dict set K C_${l}_${e}${s} clk_launch   right       C_${l}_${e}${s}_hold_right_launch
+        dict set K C_${l}_${e}${s} clk_launch   down        C_${l}_${e}${s}_hold_down_launch
+        dict set K C_${l}_${e}${s} clk_capture  left        C_${l}_${e}${s}_setup_left_capture
+        dict set K C_${l}_${e}${s} clk_capture  up          C_${l}_${e}${s}_setup_up_capture
+        dict set K C_${l}_${e}${s} clk_capture  right       C_${l}_${e}${s}_hold_right_capture
+        dict set K C_${l}_${e}${s} clk_capture  down        C_${l}_${e}${s}_hold_down_capture
+        dict set K C_${l}_${e}${s} clk_capture  alter_down  C_${l}_${e}${s}_hold_alter_down_capture
+        dict set K C_${l}_${e}${s} clk_capture  alter_right C_${l}_${e}${s}_hold_alter_right_capture
+        dict set K C_${l}_${e}${s} clk_root     clk         C_${l}_${e}${s}_clk
+        dict set K C_${l}_${e}${s} clk_root     key         C_${l}_${e}${s}_key
+        dict set K C_${l}_${e}${s} clk_root     sel         C_${l}_${e}${s}_sel
         dict set K C_${l}_${e}${s} dl           opcode ""
         dict set K C_${l}_${e}${s} dl           size   0
         dict set K C_${l}_${e}${s} pin          clkp   ""
         dict set K C_${l}_${e}${s} pin          clkb   ""
         dict set K C_${l}_${e}${s} pin          clkf   ""
         dict set K C_${l}_${e}${s} pin          keyf   ""
-        dict set K C_${l}_${e}${s} pin          keyb   ""
+        dict set K C_${l}_${e}${s} pin          keyb_c ""
+        dict set K C_${l}_${e}${s} pin          keyb_d ""
         dict set K C_${l}_${e}${s} pin          dl     ""
         dict set K C_${l}_${e}${s} pin          sel    ""
         dict set K C_${l}_${e}${s} delay        max    [dict get $K C_${l}_${e}${s} child(right)] 0
@@ -133,6 +144,22 @@ oo::define KeyRing {
         dict set K C_${l}_${e}${s} slack        max    [dict get $K C_${l}_${e}${s} child(down)]  0
         dict set K C_${l}_${e}${s} slack        min    [dict get $K C_${l}_${e}${s} child(right)] 0
         dict set K C_${l}_${e}${s} slack        min    [dict get $K C_${l}_${e}${s} child(down)]  0
+    }
+
+    #-------------------------------------------------------------------------
+    # GET_KEYRING_NAME
+    #
+    #   Returns the name of the keyring
+    #-------------------------------------------------------------------------
+    method get_keyring_name args {
+
+        set usage {
+            "get_keyring_name [options]:"
+            "Returns the name of the keyring"
+        }
+        ::kVutils::parse_args $args "" $usage
+
+        return [string trim [self] ::]
     }
 
     #-------------------------------------------------------------------------
@@ -408,8 +435,13 @@ oo::define KeyRing {
             return [dict get $K $click child(down)]
 
         } elseif { $params(-all) } {
-            return [list [dict get $K $click child(right)] [dict get $K $click child(down)]]
-
+            set right [dict get $K $click child(right)]
+            set down  [dict get $K $click child(down)]
+            if { $right == $down } {
+                return [list $right]
+            } else {
+                return [list $right $down]
+            }
         } else {
             error [::kVutils::parse_usage $options $usage]
         }
@@ -460,7 +492,13 @@ oo::define KeyRing {
             return [dict get $K $click parent(up)]
 
         } elseif { $params(-all) } {
-            return [list [dict get $K $click parent(left)] [dict get $K $click parent(up)]]
+            set left [dict get $K $click parent(left)]
+            set up   [dict get $K $click parent(up)]
+            if { $left == $up } {
+                return [list $left]
+            } else {
+                return [list $left $up]
+            }
 
         } else {
             error [::kVutils::parse_usage $options $usage]
@@ -495,16 +533,19 @@ oo::define KeyRing {
             "Returns the launch/capture clock name of <click> in the keyring"
         }
         set options {
-            {-root    bool 0 "Get a root clock"}
-            {-clk     bool 0 "Get the root clock 'clk'"}
-            {-key     bool 0 "Get the root clock 'key'"}
-            {-launch  bool 0 "Get a launch clock"}
-            {-capture bool 0 "Get a capture clock"}
-            {-left    bool 0 "Get the 'left' clock (setup)"}
-            {-up      bool 0 "Get the 'up' clock (setup)"}
-            {-right   bool 0 "Get the 'right' clock (hold)"}
-            {-down    bool 0 "Get the 'down' clock (hold)"}
-            {-all     bool 0 "Get all the (launch/capture) clocks in a list"}
+            {-root          bool 0 "Get a root clock"}
+            {-clk           bool 0 "Get the root clock 'clk'"}
+            {-key           bool 0 "Get the root clock 'key'"}
+            {-sel           bool 0 "Get the root clock 'sel'"}
+            {-launch        bool 0 "Get a launch clock"}
+            {-capture       bool 0 "Get a capture clock"}
+            {-left          bool 0 "Get the 'left' clock (setup)"}
+            {-up            bool 0 "Get the 'up' clock (setup)"}
+            {-right         bool 0 "Get the 'right' clock (hold)"}
+            {-down          bool 0 "Get the 'down' clock (hold)"}
+            {-alter_right   bool 0 "Get the 'Alter right' clock (capture hold)"}
+            {-alter_down    bool 0 "Get the 'Alter down' clock (capture hold)"}
+            {-all           bool 0 "Get all the (launch/capture) clocks in a list"}
         }
 
         if { [llength $args] < 2} {
@@ -519,6 +560,9 @@ oo::define KeyRing {
 
             } elseif { $params(-key) } {
                 return [dict get $K $click clk_root key]
+
+            } elseif { $params(-sel) } {
+                return [dict get $K $click clk_root sel]
 
             } else {
                 error [::kVutils::parse_usage $options $usage]
@@ -546,12 +590,17 @@ oo::define KeyRing {
         } elseif { $params(-down) } {
             return [dict get $K $click $clk down]
 
-        } elseif { $params(-all) } {
-            return [list [dict get $K $click $clk left]  \
-                         [dict get $K $click $clk up]    \
-                         [dict get $K $click $clk right] \
-                         [dict get $K $click $clk down]]
+        } elseif { $params(-alter_right) } {
+            return [dict get $K $click $clk alter_right]
 
+        } elseif { $params(-alter_down) } {
+            return [dict get $K $click $clk alter_down]
+
+        } elseif { $params(-all) } {
+            return [list [dict get $K $click $clk left]    \
+                         [dict get $K $click $clk up]      \
+                         [dict get $K $click $clk right]   \
+                         [dict get $K $click $clk down]]
         } else {
             error [::kVutils::parse_usage $options $usage]
         }
@@ -698,12 +747,13 @@ oo::define KeyRing {
             "Set the pin attributes of <click> in the keyring"
         }
         set options {
-            {-clkb val "" "Clock pin @Buffer"}
-            {-clkf val "" "Clock pin @Flip-Flop (CK)"}
-            {-keyb val "" "Key pin @Buffer"}
-            {-keyf val "" "Key pin @Flip-Flop (Q)"}
-            {-dl   val "" "Delay line output pin"}
-            {-sel  val "" "Delay line selection pins"}
+            {-clkb   val "" "Clock pin @Buffer"}
+            {-clkf   val "" "Clock pin @Flip-Flop (CK)"}
+            {-keyb_c val "" "Key pin on clock path @Buffer"}
+            {-keyb_d val "" "Key pin on data path @Buffer"}
+            {-keyf   val "" "Key pin @Flip-Flop (Q)"}
+            {-dl     val "" "Delay line output pin"}
+            {-sel    val "" "Delay line selection pins"}
         }
 
         if { [llength $args] != 2 } {
@@ -718,8 +768,11 @@ oo::define KeyRing {
         } elseif { $params(-clkf) != "" } {
             dict set K $click pin clkf [get_attribute $params(-clkf) full_name]
 
-        } elseif { $params(-keyb) != "" } {
-            dict set K $click pin keyb [get_attribute $params(-keyb) full_name]
+        } elseif { $params(-keyb_c) != "" } {
+            dict set K $click pin keyb_c [get_attribute $params(-keyb_c) full_name]
+
+        } elseif { $params(-keyb_d) != "" } {
+            dict set K $click pin keyb_d [get_attribute $params(-keyb_d) full_name]
 
         } elseif { $params(-keyf) != "" } {
             dict set K $click pin keyf [get_attribute $params(-keyf) full_name]
@@ -747,12 +800,13 @@ oo::define KeyRing {
             "Get a the pins attributes of <click> in the keyring"
         }
         set options {
-            {-clkb bool 0 "Clock pin @Buffer"}
-            {-clkf bool 0 "Clock pin @Flip-Flop (CK)"}
-            {-keyb bool 0 "Key pin @Buffer"}
-            {-keyf bool 0 "Key pin @Flip-Flop (Q)"}
-            {-dl   bool 0 "Delay line output pin"}
-            {-sel  bool 0 "Delay line selection pins"}
+            {-clkb   bool 0 "Clock pin @Buffer"}
+            {-clkf   bool 0 "Clock pin @Flip-Flop (CK)"}
+            {-keyb_c bool 0 "Key pin on clock path @Buffer"}
+            {-keyb_d bool 0 "Key pin on data path @Buffer"}
+            {-keyf   bool 0 "Key pin @Flip-Flop (Q)"}
+            {-dl     bool 0 "Delay line output pin"}
+            {-sel    bool 0 "Delay line selection pins"}
         }
 
         if { [llength $args] != 1 } {
@@ -766,8 +820,11 @@ oo::define KeyRing {
         } elseif { $params(-clkf) } {
             return [get_pins [dict get $K $click pin clkf]]
 
-        } elseif { $params(-keyb) } {
-            return [get_pins [dict get $K $click pin keyb]]
+        } elseif { $params(-keyb_c) } {
+            return [get_pins [dict get $K $click pin keyb_c]]
+
+        } elseif { $params(-keyb_d) } {
+            return [get_pins [dict get $K $click pin keyb_d]]
 
         } elseif { $params(-keyf) } {
             return [get_pins [dict get $K $click pin keyf]]
@@ -887,7 +944,7 @@ oo::define KeyRing {
             dict set clks $click cumul  0
         }
 
-        # # 1st pass: init, 2nd pass: definitive values
+        # 1st pass: init, 2nd pass: definitive values
         for { set i 0 } { $i < 2 } { incr i } {
 
             set stack [::kVutils::stack_create $C_src]
@@ -905,7 +962,7 @@ oo::define KeyRing {
                     # Push new neighbors in the stack
                     if { [lsearch $hist $dest] < 0 } {
                         ::kVutils::stack_push stack $dest
-                        lappend hist $dest
+                        ::kVutils::stack_push hist $dest
                     }
 
                     # Compute cumulated delays
@@ -921,8 +978,27 @@ oo::define KeyRing {
             }
         }
 
+        # dict for {l c} [dict get $clks] {
+        #     puts [format "%s:%s:%s" $l [dict get $c dist] [dict get $c cumul]]
+        # }
+
         # Return the difference beween C_dest and C_src
-        return [expr [dict get $clks ${C_dest} cumul] - [dict get $clks ${C_src} dist]]
+        if { $C_src == $C_dest } {
+
+            set C_left [my get_parent $C_dest -left]
+            set C_up   [my get_parent $C_dest -up]
+
+            set d_left [my get_delay $C_left -max -to $C_dest]
+            set d_up   [my get_delay $C_up -max -to $C_dest]
+
+            set D_left [expr [dict get $clks ${C_left} dist] - [dict get $clks ${C_src} dist]]
+            set D_up   [expr [dict get $clks ${C_up} dist] - [dict get $clks ${C_src} dist]]
+
+            return [expr max($D_left + $d_left, $D_up + $d_up)]
+
+        } else {
+            return [expr [dict get $clks ${C_dest} dist] - [dict get $clks ${C_src} dist]]
+        }
     }
 
     #-------------------------------------------------------------------------
@@ -930,7 +1006,7 @@ oo::define KeyRing {
     #
     #   Get the propagated delay between two clocks
     #-------------------------------------------------------------------------
-    method get_de_delay { args } {
+    method get_de_delay args {
 
         set usage {
             "get_de_delay [options]"
@@ -962,7 +1038,9 @@ oo::define KeyRing {
             report_timing -nosplit -from $params(-from) -to $params(-to) -delay_type $type
         }
 
-        set re [subst -nocommands -nobackslashes {(data arrival.*delay \(propagated\)\s+)([0-9]+\.?[0-9]+)}]
+        set re [subst -nocommands -nobackslashes \
+                    {(data arrival.*delay \(propagated\)\s+)([0-9]+\.?[0-9]+)}]
+
         if { [regexp $re $timing all tmp delay] } {
             return $delay
         } else {
@@ -975,7 +1053,7 @@ oo::define KeyRing {
     #
     #   Get the slack value between two clocks
     #-------------------------------------------------------------------------
-    method get_slack { args } {
+    method get_slack args {
 
         set usage {
             "get_slack [options]"
@@ -1020,7 +1098,7 @@ oo::define KeyRing {
     #
     # Update a KeyRing Delay Element configuration
     #-------------------------------------------------------------------------
-    method update_delay_elements { args } {
+    method update_delay_elements args {
 
         set usage {
             "update_delay_elements [options]"
@@ -1058,7 +1136,7 @@ oo::define KeyRing {
     # Update a KeyRing object timing information from timing analysis
     # (delays, slack, periods)
     #-------------------------------------------------------------------------
-    method update_timing_information { args } {
+    method update_timing_information args {
 
         set usage {
             "update_timing_information [options]"
@@ -1104,4 +1182,246 @@ oo::define KeyRing {
             my set_period $click [my get_effective_delay $click $click]
         }
     }
+
+    #------------------------------------------------------------------------------
+    # INIT_DELAYS
+    #
+    #    Define initial delays (DE length/period/margins) parameters in the KeyRing
+    #------------------------------------------------------------------------------
+    method init_delays args {
+
+        set usage {
+            "init_delays [options]"
+            "Define initial delays (DE length/period/margins) parameters in the KeyRing"
+        }
+        set options {
+            {-de_params val "" "Deleay elements parameters array [size, min, max]"}
+            {-de_length val "" "Deleay elements length array [s,]"}
+            {-margins   val "" "Margins array [setup, hold]"}
+        }
+        if { [llength $args] != 6 } {
+            error [::kVutils::parse_usage $options $usage]
+        }
+        array set params [::kVutils::parse_args $args $options $usage]
+
+        upvar 1 $params(-de_params) de_params
+        upvar 1 $params(-de_length) de_length
+        upvar 1 $params(-margins) margins
+
+        # DE LENGTH
+        foreach click [my get_clicks] {
+            set s [my get_index $click -stage]
+            my set_dl $click -size $de_params(size) -length $de_length($s)
+        }
+
+        # INITIAL DELAYS
+        foreach click [my get_clicks] {
+            set de_l [my get_dl $click -length]
+            foreach child [my get_child $click -all] {
+                my set_delay $click -max -to $child -delay [expr $de_params(max) * $de_l]
+                my set_delay $click -min -to $child -delay [expr $de_params(min) * $de_l]
+            }
+        }
+
+        # CLOCK PERIODS & MARGINS
+        foreach click [my get_clicks] {
+            my set_period $click [my get_effective_delay $click $click]
+            my set_margin $click -setup $margins(setup)
+            my set_margin $click -hold  $margins(hold)
+        }
+    }
+
+    #------------------------------------------------------------------------------
+    # CREATE_ROOT_CLOCKS
+    #
+    #    Create clock/key root clocks intended to be used for defining
+    #    launch/capture clocks
+    #------------------------------------------------------------------------------
+    method create_root_clocks args {
+
+        set usage {
+            "create_root_clocks [options]"
+            "Create clock/key root clocks of the KeyRing"
+        }
+        ::kVutils::parse_args $args "" $usage
+
+        foreach click [my get_clicks] {
+
+            # Click
+            create_clock -name [my get_clock_name $click -root -clk] \
+                -period [my get_period $click] \
+                -add [my get_endpoint $click -clkb]
+
+            # Key
+            create_generated_clock -name [my get_clock_name $click -root -key] \
+                -divide_by 2 -master_clock [get_clock [my get_clock_name $click -root -clk]] \
+                -source [my get_endpoint $click -clkb] \
+                -add [my get_endpoint $click -keyb_c]
+        }
+
+        set_propagated_clock [get_clocks *_clk]
+        set_propagated_clock [get_clocks *_key]
+        update_timing
+    }
+
+    #------------------------------------------------------------------------------
+    # GENERATE_LC_CLOCKS
+    #
+    #    Generate Launch/Capture clocks from root clocks
+    #------------------------------------------------------------------------------
+    method generate_lc_clocks args {
+
+        set usage {
+            "generate_lc_clocks [options]"
+            "Generate Launch/Capture clocks from root clocks"
+        }
+        ::kVutils::parse_args $args "" $usage
+
+        foreach click [my get_clicks] {
+
+            set click_left  [my get_parent $click -left]
+            set click_up    [my get_parent $click -up]
+            set click_down  [my get_child [my get_parent $click -left] -down]
+            set click_right [my get_child [my get_parent $click -up] -right]
+
+            ###########
+            #  SETUP  #
+            ###########
+
+            # Setup Left Launch
+            create_generated_clock -name [my get_clock_name $click -launch -left] \
+                -edges {1 3 5} -master_clock [get_clock [my get_clock_name $click_left -root -clk]] \
+                -source [my get_endpoint $click_left -clkb] \
+                -add [my get_endpoint $click_left -clkb]
+
+            # Setup Left Capture
+            create_generated_clock -name [my get_clock_name $click -capture -left] \
+                -combinational -master_clock [get_clock [my get_clock_name $click_left -root -key]] \
+                -source [my get_endpoint $click_left -keyb_c] \
+                -add [my get_endpoint $click -clkb]
+
+            # (1,1,1) KeyRing does not need these clocks (redundant)
+            if { $click_left != $click_up } {
+
+                # Setup Up Launch
+                create_generated_clock -name [my get_clock_name $click -launch -up] \
+                    -edges {1 3 5} -master_clock [get_clock [my get_clock_name $click_up -root -clk]] \
+                    -source [my get_endpoint $click_up -clkb] \
+                    -add [my get_endpoint $click_up -clkb]
+
+                # Setup Up Capture
+                create_generated_clock -name [my get_clock_name $click -capture -up] \
+                    -combinational -master_clock [get_clock [my get_clock_name $click_up -root -key]] \
+                    -source [my get_endpoint $click_up -keyb_c] \
+                    -add [my get_endpoint $click -clkb]
+            }
+
+            ##########
+            #  HOLD  #
+            ##########
+
+            # Hold Down Launch
+            create_generated_clock -name [my get_clock_name $click -launch -down] \
+                -edges {1 2 3} -master_clock [get_clock [my get_clock_name $click_left -root -key]] \
+                -source [my get_endpoint $click_left -keyb_c] \
+                -add [my get_endpoint $click_down -clkb]
+
+            # Hold Down Capture
+            create_generated_clock -name [my get_clock_name $click -capture -down] \
+                -combinational -master_clock [get_clock [my get_clock_name $click_left -root -key]] \
+                -source [my get_endpoint $click_left -keyb_c] \
+                -add [my get_endpoint $click -clkb]
+
+            # (1,1,1) KeyRing does not need these clocks (redundant)
+            if { $click_down != $click_right } {
+
+                # Hold Right Launch
+                create_generated_clock -name [my get_clock_name $click -launch -right] \
+                    -edges {1 2 3} -master_clock [get_clock [my get_clock_name $click_up -root -key]] \
+                    -source [my get_endpoint $click_up -keyb_c] \
+                    -add [my get_endpoint $click_right -clkb]
+
+                # Hold Right Capture
+                create_generated_clock -name [my get_clock_name $click -capture -right] \
+                    -combinational -master_clock [get_clock [my get_clock_name $click_up -root -key]] \
+                    -source [my get_endpoint $click_up -keyb_c] \
+                    -add [my get_endpoint $click -clkb]
+            }
+        }
+
+        # CLOCK CONFIGURATIONS
+        set_propagated_clock [get_clocks *_launch]
+        set_propagated_clock [get_clocks *_capture]
+
+        # Break timing loops in the KeyRing
+        foreach click [my get_clicks] {
+            set_sense -stop_propagation -clocks \
+                [get_clocks [get_attribute [my get_endpoint $click -clkb] clocks] \
+                     -filter "full_name=~*launch or full_name=~*capture"] \
+                [my get_endpoint $click -keyb_c]
+        }
+
+        # Define DE effective lengths
+        foreach click [my get_clicks] {
+            set b 0
+            foreach_in_collection pin [my get_endpoint $click -sel] {
+                set_case_analysis [string index [my get_dl $click -opcode] $b] [get_pin $pin]
+                incr b
+            }
+        }
+
+        # Add margins
+        foreach click [my get_clicks] {
+
+            # Setup
+            foreach_in_collection launch [get_clocks ${click}_setup_*_launch] {
+                foreach_in_collection capture [get_clocks ${click}_setup_*_capture] {
+                    set_clock_uncertainty -setup -from $launch -to $capture \
+                        [my get_margin $click -setup]
+                }
+            }
+
+            # Hold
+            foreach_in_collection launch [get_clocks ${click}_hold_*_launch] {
+                foreach_in_collection capture [get_clocks ${click}_hold_*_capture] {
+                    set_clock_uncertainty -hold -from $launch -to $capture \
+                        [my get_margin $click -hold]
+                }
+            }
+        }
+
+        update_timing
+    }
+
+    #------------------------------------------------------------------------------
+    # GENERATE_XBS_CLOCKS
+    #
+    #   Clocks defined on the clkb pin which activates a single-cycle path going
+    #   through the keyb_d pins. Allow to constrain hold on xbs selection signals
+    #------------------------------------------------------------------------------
+    method generate_xbs_clocks args {
+
+         set usage {
+            "generate_xbs_clocks [options]"
+            "Sel clocks to constrain hold on xbs selection signals"
+        }
+        ::kVutils::parse_args $args "" $usage
+
+        foreach click [my get_clicks] {
+
+            set clksel [my get_clock_name $click -root -sel]
+
+            create_generated_clock -name  $clksel \
+                -edges {1 2 3} -master_clock [get_clock [my get_clock_name $click -root -clk]] \
+                -source [my get_endpoint $click -clkb] \
+                -add [my get_endpoint $click -clkb]
+
+            set_clock_uncertainty -hold -from [get_clocks $clksel] -to [get_clocks $clksel] \
+                [my get_margin $click -hold]
+        }
+
+        set_propagated_clock [get_clocks *_sel]
+        update_timing
+    }
+
 }

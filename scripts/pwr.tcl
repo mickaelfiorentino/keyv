@@ -4,7 +4,7 @@
 # Author  : Mickael Fiorentino <mickael.fiorentino@polymtl.ca>
 # Lab     : GRM - Polytechnique Montreal
 # Date    : <2020-04-22 Wed>
-# Brief   : Power analysis from Prime Tim2
+# Brief   : Power analysis from Prime Time
 #-----------------------------------------------------------------------------
 # [tcsh]% source setup.csh && cd synthesis
 # [tcsh]% pt -f ../scripts/pwr.tcl -x "set DESIGN <design>; set STEP <STEP>; set BENCH <BENCH>"
@@ -19,8 +19,7 @@ global SCRIPTS_D
 global REP_D
 global SAV_D
 global SIM_D
-global OPERATING_CONDITIONS_MAX
-global OPERATING_CONDITIONS_MIN
+global OPCOND
 global CELLS_CK_CELL
 
 # Defaults
@@ -47,22 +46,22 @@ if { ![file exists $SAIF] } {
 }
 
 #----------------------------------------------------------------------------
-# LOAD DESIGN & READ ACTIVITY
+# POWER REPORT
 #----------------------------------------------------------------------------
 set_app_var power_enable_analysis true
 set_app_var power_clock_network_include_clock_gating_network true
 set_app_var power_clock_network_include_register_clock_pin_power true
 
+# Load Design
 read_ddc ${SAV_D}/${DESIGN}.${STEP}.ddc
-read_sdc ${SAV_D}/${DESIGN}.sdc
-set_operating_conditions -max $OPERATING_CONDITIONS_MAX -min $OPERATING_CONDITIONS_MIN
+set_operating_conditions -max $OPCOND -min $OPCOND
 
+# Read activity from benchmark
 read_saif $SAIF -strip_path $DUT
 
-#----------------------------------------------------------------------------
-# REPORT POWER
-#----------------------------------------------------------------------------
-set CKCELL [get_lib_cells ${TIMING_LIB_SLOW}/${CELLS_CK_CELL}]
-estimate_clock_network_power [get_lib_cells $CKCELL]
+# # Clock tree
+# read_sdc ${SAV_D}/${DESIGN}.sdc
+# estimate_clock_network_power [get_lib_cells ${TIMING_LIB}/${CELLS_CK_CELL}]
 
+# Report power
 ::kVsyn::save_report -pwr -top $DESIGN -dir $REP_D -name ${DESIGN}.${STEP}.pwr.${BENCH}

@@ -51,7 +51,6 @@ help: header
 	$(info   - fibo																	)
 	$(info   - dhrystone															)
 	$(info   - coremark																)
-	$(info   - embench																)
 	$(info																			)
 
 header:

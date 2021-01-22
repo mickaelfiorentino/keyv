@@ -59,7 +59,7 @@ onbreak {
 # Trigger a breakpoint when imem_read = C0002573 (timer instruction : rdcycle a0)
 # Record all signals of the dut in the SAIF file (off @ start)
 if { $DO_SAIF } {
-    bp tb.sv 98 -cond {imem_read == C0002573}
+    bp tb.sv 99 -cond {imem_read == C0002573}
     power add -internal -r ${dut}/*
     power off
     set pwr 0

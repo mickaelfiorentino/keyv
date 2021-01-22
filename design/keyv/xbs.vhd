@@ -82,11 +82,12 @@ begin
     variable pc : keyv_to_pc;
   begin
     pc := from_xu(0).to_pc;
-    for i in 1 to KEYRING_E-1 loop
+    for i in 0 to KEYRING_E-1 loop
       if W_sel(i) = '1' then
         pc := from_xu(i).to_pc;
       end if;
     end loop;
+    pc.stall := '0';
     to_pc <= pc;
   end process p_pc_sel;
 
@@ -101,11 +102,13 @@ begin
     variable idecode : keyv_to_idecode;
   begin
     idecode := from_xu(0).to_idecode;
-    for i in 1 to KEYRING_E-1 loop
+    for i in 0 to KEYRING_E-1 loop
       if R_sel(i) = '1' then
         idecode := from_xu(i).to_idecode;
       end if;
     end loop;
+    idecode.flush := '0';
+    idecode.stall := '0';
     to_idecode <= idecode;
   end process p_idecode_sel;
 
@@ -121,11 +124,12 @@ begin
     variable rfv : keyv_to_rf;
   begin
     rfv := from_xu(0).to_rf;
-    for i in 1 to KEYRING_E-1 loop
+    for i in 0 to KEYRING_E-1 loop
       if R_sel(i) = '1' then
         rfv := from_xu(i).to_rf;
       end if;
     end loop;
+    rfv.en := '1';
     rf <= rfv;
   end process p_rf_sel;
 
@@ -169,7 +173,7 @@ begin
     variable mulflush : std_logic;
   begin
     mulflush := mul_flush_x(0);
-    for i in 1 to KEYRING_E-1 loop
+    for i in 0 to KEYRING_E-1 loop
       if E_sel(i) = '1' then
         mulflush := mul_flush_x(i);
       end if;
@@ -335,11 +339,12 @@ begin
     variable sys : keyv_to_sys;
   begin
     sys := from_xu(0).to_sys;
-    for i in 1 to KEYRING_E-1 loop
+    for i in 0 to KEYRING_E-1 loop
       if M_sel(i) = '1' then
         sys := from_xu(i).to_sys;
       end if;
     end loop;
+    sys.stall := '0';
     to_sys <= sys;
   end process p_sys_sel;
 
@@ -354,7 +359,7 @@ begin
     variable lsu : keyv_to_lsu;
   begin
     lsu := from_xu(0).to_lsu;
-    for i in 1 to KEYRING_E-1 loop
+    for i in 0 to KEYRING_E-1 loop
       if M_sel(i) = '1' then
         lsu := from_xu(i).to_lsu;
       end if;

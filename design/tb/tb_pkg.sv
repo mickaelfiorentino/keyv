@@ -24,7 +24,7 @@ package tb_pkg;
     // KEYRING
     parameter KEYRING_E = 6;
     parameter KEYRING_S = 6;
-    parameter KEYRING_L = 30;
+    parameter KEYRING_L = 20;
     parameter KEYRING_DE_FLAT = (KEYRING_E*KEYRING_S+3)*KEYRING_L;
 
     typedef logic [KEYRING_L-1:0] t_keyring_delay;
@@ -51,12 +51,12 @@ package tb_pkg;
     parameter W_DELAY_SIM  = to_thermometer(1);
     parameter MU_DELAY_SIM = to_thermometer(1);
 
-    parameter F_DELAY_SYN  = to_thermometer(25);
-    parameter D_DELAY_SYN  = to_thermometer(15);
-    parameter R_DELAY_SYN  = to_thermometer(15);
-    parameter E_DELAY_SYN  = to_thermometer(15);
-    parameter M_DELAY_SYN  = to_thermometer(15);
-    parameter W_DELAY_SYN  = to_thermometer(20);
+    parameter F_DELAY_SYN  = to_thermometer(5);
+    parameter D_DELAY_SYN  = to_thermometer(5);
+    parameter R_DELAY_SYN  = to_thermometer(5);
+    parameter E_DELAY_SYN  = to_thermometer(5);
+    parameter M_DELAY_SYN  = to_thermometer(5);
+    parameter W_DELAY_SYN  = to_thermometer(5);
     parameter MU_DELAY_SYN = to_thermometer(1);
 
     // Last instruction of any program is Loop Forever

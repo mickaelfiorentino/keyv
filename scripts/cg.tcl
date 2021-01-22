@@ -39,11 +39,13 @@ set_clock_gating_style -sequential_cell latch -max_fanout 32 -minimum_bitwidth 4
 compile -incremental_mapping -gate_clock
 
 propagate_constraints -gate_clock
+
 if { $DO_HOLD } {
     set_fix_hold [all_clocks]
     set_app_var timing_disable_recovery_removal_checks false
     set_app_var enable_recovery_removal_arcs true
 }
+
 compile -incremental_mapping
 update_timing
 

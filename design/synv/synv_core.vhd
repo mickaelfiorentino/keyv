@@ -21,6 +21,8 @@ entity core is
   port (
     i_rstn       : in  std_logic;
     i_clk        : in  std_logic;
+    i_delay_cfg  : in  std_logic;
+    i_delay_en   : in  std_logic;
     i_imem_read  : in  std_logic_vector(XLEN-1 downto 0);
     o_imem_clk   : out std_logic;
     o_imem_en    : out std_logic;

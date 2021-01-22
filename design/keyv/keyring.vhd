@@ -26,8 +26,9 @@ architecture str of keyring is
 
   signal iclicks        : keyv_to_click_m;
   signal oclicks        : keyv_from_click_m;
-  signal keys           : keyv_logic_m;
-  signal keyd           : keyv_logic_m;
+  signal keys_c         : keyv_logic_m;
+  signal keys_d         : keyv_logic_m;
+  signal keys_c_del     : keyv_logic_m;
   signal states         : keyv_logic_m;
   signal delay_cfg      : keyv_delay_cfg;
   signal k_delays       : keyv_delay_m;
@@ -36,7 +37,7 @@ architecture str of keyring is
   signal m_delays_stop  : keyv_delay;
   signal m_iclick       : keyv_to_click;
   signal m_oclick       : keyv_from_click;
-  signal m_keyd         : keyv_logic;
+  signal m_key_c_del    : keyv_logic;
   signal m_start        : keyv_logic;
   signal m_startd       : keyv_logic;
   signal m_stop         : keyv_logic;
@@ -98,16 +99,20 @@ begin
       --            Delayed throuh DCDL
       --    States: Phase conversion of the Keys used to control XBS muxes
       --            init_condition() controls the inversion of some keys.
+      --    key_c : Key on clock path. Q output of the toggle-flop
+      --    key_d : Key on data path: QN output of the toggle-flop (inverted)
+      --            Same logic than key_c, but allow to separate timing paths
       --------------------------------------------------------------------------
       o_keyring.clks(e)(s)   <= oclicks(e)(s).clk;
       o_keyring.states(e)(s) <= states(e)(s);
-      keys(e)(s)             <= oclicks(e)(s).key;
+      keys_c(e)(s)           <= oclicks(e)(s).key_c;
+      keys_d(e)(s)           <= oclicks(e)(s).key_d;
 
       g_state: if click_concurrency(e,s) = 0 generate
-        states(e)(s) <= keys(e)(s) xnor keys(get_click(e-1, KEYRING_E))(s);
+        states(e)(s) <= keys_d(e)(s) xnor keys_d(get_click(e-1, KEYRING_E))(s);
       end generate g_state;
       g_nstate: if click_concurrency(e,s) > 0 generate
-        states(e)(s) <= keys(e)(s) xor keys(get_click(e-1, KEYRING_E))(s);
+        states(e)(s) <= keys_d(e)(s) xor keys_d(get_click(e-1, KEYRING_E))(s);
       end generate g_nstate;
 
       --------------------------------------------------------------------------
@@ -124,8 +129,8 @@ begin
           i_click => iclicks(e)(s),
           o_click => oclicks(e)(s));
 
-      iclicks(e)(s).key_e <= keyd(get_click(e, KEYRING_E))(get_click(s-1, KEYRING_S));
-      iclicks(e)(s).key_s <= keyd(get_click(e-1, KEYRING_E))(get_click(s+KEYRING_D-1, KEYRING_S));
+      iclicks(e)(s).key_e <= keys_c_del(get_click(e, KEYRING_E))(get_click(s-1, KEYRING_S));
+      iclicks(e)(s).key_s <= keys_c_del(get_click(e-1, KEYRING_E))(get_click(s+KEYRING_D-1, KEYRING_S));
 
       --------------------------------------------------------------------------
       -- Delay Elements
@@ -141,8 +146,8 @@ begin
         generic map (
           DL => KEYRING_L)
         port map (
-          o_logic => keyd(e)(s),
-          i_logic => keys(e)(s),
+          o_logic => keys_c_del(e)(s),
+          i_logic => keys_c(e)(s),
           i_sel   => k_delays(e)(s));
 
     end generate gS;
@@ -175,8 +180,8 @@ begin
   --     u_dcdl_m_stop is the DE matching the final stage of the FSM
   ------------------------------------------------------------------------------
   o_keyring.m_clk <= m_oclick.clk;
-  m_iclick.key_e  <= m_keyd;
-  m_iclick.key_s  <= m_keyd;
+  m_iclick.key_e  <= m_key_c_del;
+  m_iclick.key_s  <= m_key_c_del;
   m_iclick.stall  <= m_startd xnor m_stop;
 
   g_m_delays : for i in 0 to KEYRING_L-1 generate
@@ -198,8 +203,8 @@ begin
     generic map (
       DL => KEYRING_L)
     port map (
-      o_logic => m_keyd,
-      i_logic => m_oclick.key,
+      o_logic => m_key_c_del,
+      i_logic => m_oclick.key_c,
       i_sel   => m_delays_mul);
 
   m_start_clk <= i_keyring.m_start;

@@ -36,7 +36,7 @@ architecture beh of xu is
   alias W_clk : std_logic is i_clks(keyv_clk'pos(W));
 
   -- F Stage
-  signal F_pc     : keyv_from_pc;
+  signal F_pc : keyv_from_pc;
 
   -- D Stage
   signal D_imem    : std_logic_vector(XLEN-1 downto 0);
@@ -49,6 +49,7 @@ architecture beh of xu is
   signal R_fwd_b   : keyv_fwd_xu;
   signal R_mul     : std_logic;
   signal R_div     : std_logic;
+  signal R_flushed : std_logic;
 
   -- E Stage
   signal E_pc           : keyv_from_pc;
@@ -60,6 +61,7 @@ architecture beh of xu is
   signal E_flush_out    : std_logic;
 
   -- M Stage
+  signal M_pc         : keyv_from_pc;
   signal M_idecode    : keyv_from_idecode;
   signal M_alu_result : std_logic_vector(XLEN-1 downto 0);
   signal M_pc_target  : std_logic_vector(XLEN-1 downto 0);
@@ -93,7 +95,7 @@ begin
   o_xu.to_pc.branch <= M_pc_branch;
   o_xu.to_pc.sys    <= M_pc_sys;
   o_xu.to_pc.target <= M_pc_target;
-  o_xu.to_pc.origin <= F_pc.pc;
+  o_xu.to_pc.origin <= M_pc.pc;
 
   -- IDECODE
   o_xu.to_idecode.imem  <= D_imem;
@@ -149,7 +151,7 @@ begin
   --   flush   : This XU is flushing others
   --   flushed : This XU was flushed @previous cycle and shall not be flushed @this cycle
   o_xu.flush   <= M_flush_out;
-  o_xu.flushed <= M_flushed and i_xu.flush;
+  o_xu.flushed <= M_flushed xor R_flushed;
 
   -- STALLS
   o_xu.busy  <= (R_ready xor data_ready) and D_decode.wb and not(D_decode.jump);
@@ -254,16 +256,18 @@ begin
   stage_R : process(R_clk, i_rstn)
   begin
     if i_rstn = '0' then
-      R_ready <= '0';
-      R_mul   <= '0';
-      R_div   <= '0';
-      R_pc    <= init_pc;
-      R_fwd_a <= init_fwd;
-      R_fwd_b <= init_fwd;
+      R_ready   <= '0';
+      R_mul     <= '0';
+      R_div     <= '0';
+      R_flushed <= '0';
+      R_pc      <= init_pc;
+      R_fwd_a   <= init_fwd;
+      R_fwd_b   <= init_fwd;
     elsif rising_edge(R_clk) then
-      R_pc    <= D_pc;
-      R_fwd_a <= i_xu.from_fwd_a;
-      R_fwd_b <= i_xu.from_fwd_b;
+      R_pc      <= D_pc;
+      R_fwd_a   <= i_xu.from_fwd_a;
+      R_fwd_b   <= i_xu.from_fwd_b;
+      R_flushed <= M_flushed;
       if (D_decode.mul = '1') then
         R_mul <= not M_mul;
       end if;
@@ -325,9 +329,10 @@ begin
   stage_M : process(M_clk, i_rstn)
   begin
     if i_rstn = '0' then
+      M_pc         <= init_pc;
       M_idecode    <= init_idecode;
-      M_alu_result <= (others => '0');
       M_ra         <= RESET_VECTOR;
+      M_alu_result <= (others => '0');
       M_sys        <= (others => '0');
       M_pc_branch  <= '0';
       M_pc_sys     <= '0';
@@ -337,8 +342,11 @@ begin
       M_mul        <= '0';
       M_div        <= '0';
     elsif rising_edge(M_clk) then
+      M_pc      <= E_pc;
       M_ready   <= E_ready;
-      M_flushed <= i_xu.flush;
+      if (i_xu.flush = '1') then
+        M_flushed <= not(R_flushed);
+      end if;
       --
       if (i_xu.flush = '1') then
         M_flush_out  <= '0';

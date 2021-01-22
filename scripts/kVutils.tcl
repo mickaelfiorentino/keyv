@@ -224,13 +224,16 @@ proc ::kVutils::file_write { fname str {mode "a"} } {
 #
 #   Create file <fname> directory if it does not exist & clear file
 #-----------------------------------------------------------------------------
-proc ::kVutils::file_init { fname } {
+proc ::kVutils::file_init { fname {verbose 0}} {
 
     set file_dir [join [lrange [split $fname /] 0 end-1] /]
     if { ![file exists $file_dir] } {
         file mkdir $file_dir
     }
     close [open $fname "w"]
+    if { $verbose } {
+        puts "$fname"
+    }
 }
 
 #-----------------------------------------------------------------------------
@@ -397,4 +400,33 @@ proc ::kVutils::parse_usage { {optList ""} {usage ""} } {
     }
 
     return $msg
+}
+
+
+proc ::kVutils::get_keyring_stage {E e s d} {
+
+    if { ($E != 3) && ($E != 6) } {
+        error "E must be 3 or 6"
+    }
+    array set stages {
+        0 F
+        1 D
+        2 R
+        3 E
+        4 M
+        5 W
+    }
+    set S [array size stages]
+
+    # KeyRing dependencies
+    foreach {i e} [array get keyv_eus] {
+        foreach {j s} [array get keyv_stages] {
+            dict set dep ${s}${e} left  $keyv_stages([expr ($j-1)%$S])$keyv_eus([expr ($i)%$E])
+            dict set dep ${s}${e} right $keyv_stages([expr ($j+1)%$S])$keyv_eus([expr ($i)%$E])
+            dict set dep ${s}${e} up    $keyv_stages([expr ($j+1)%$S])$keyv_eus([expr ($i-1)%$E])
+            dict set dep ${s}${e} down  $keyv_stages([expr ($j-1)%$S])$keyv_eus([expr ($i+1)%$E])
+        }
+    }
+
+
 }

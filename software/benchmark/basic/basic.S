@@ -301,29 +301,6 @@ main:
 /*                      SPECIFIC TESTS                        */
 /**************************************************************/
 
-    // Multiple sw/lw in a row with dependencies
-    TEST_CASE( 103, t3, 0x80000000, \
-        li t0, 0x00000001;          \
-        li t1, 0x00000002;          \
-        li t2, 0x00000003;          \
-        li t3, 0x7ffffffa;          \
-        la a0, dat10;               \
-        sw t0, 0(a0);               \
-        sw t1, 4(a0);               \
-        sw t2, 8(a0);               \
-        sw t3, 12(a0);              \
-        sw a0, 16(a0);              \
-        addi a1, a0, 12;            \
-        lw t0, 0(a1);               \
-        lw t1, -4(a1);              \
-        lw a1, 16(a0);              \
-        lw t2, 8(a1);               \
-        lw t3, 12(a1);              \
-        add t1, t0, t1;             \
-        add t2, t1, t2;             \
-        add t3, t2, t3;             \
-    )
-
     // Two multiplications in a row
     DOUBLE_TEST( 104, t3, t4, 21, 24, \
         li  t0, 7 ;                   \

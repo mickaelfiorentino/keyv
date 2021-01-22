@@ -19,8 +19,7 @@ global SCRIPTS_D
 global REP_D
 global NET_D
 global SAV_D
-global OPERATING_CONDITIONS_MAX
-global OPERATING_CONDITIONS_MIN
+global OPCOND
 
 if { ![info exists STEP] } {
     set STEP syn
@@ -33,7 +32,7 @@ if { $STEP != "syn" && $STEP != "cg" } {
 # LOAD DESIGN
 #----------------------------------------------------------------------------
 read_ddc ${SAV_D}/${DESIGN}.${STEP}.ddc
-#set_operating_conditions -max $OPERATING_CONDITIONS_MAX -min $OPERATING_CONDITIONS_MIN
+set_operating_conditions -max $OPCOND -min $OPCOND
 
 #----------------------------------------------------------------------------
 # SAVE SDF

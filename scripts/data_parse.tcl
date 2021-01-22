@@ -1,4 +1,4 @@
-#!/bin/tclsh
+#!/usr/local/opt/tcl8.6.10/bin/tclsh8.6
 #-----------------------------------------------------------------------------
 # Project : KeyV
 # File    : data_parse.tcl
@@ -10,7 +10,7 @@
 # [tcsh]% source setup.csh
 # [tcsh]% ./scripts/data_parse.tcl
 #-----------------------------------------------------------------------------
-package require Tcl 8.5
+package require Tcl 8.6
 
 #-----------------------------------------------------------------------------
 # SETUP
@@ -25,71 +25,72 @@ if { [lsearch ${auto_path} $::env(KEYV_SCRIPTS)] < 0 } {
     lappend auto_path $::env(KEYV_SCRIPTS)
 }
 package require kVutils
+source $::env(KEYV_SCRIPTS)/KeyRing.tcl
 
 #-------------------------------------------------------------------------
+# PARSE STA
 #
-#                                     STA
-#
+#  Parse *KeyV* STA reports and produce csv summaries
 #-------------------------------------------------------------------------
-proc parse_sta csv {
+proc parse_sta core {
 
+    global keyring
+    global MODULES
+    global CORES
     global STA_RPT
-
-    # Read timing report
-    set rpt [::kVutils::file_read $STA_RPT]
+    global STA_CSV
 
     #---------------------------------------------------------------------
-    # Init CSV
+    # Init CSV & RPT files
     #---------------------------------------------------------------------
-    set head    "%s,%s,%s,%s,%s,%s"
-    set content "%s,%s,%.2f,%.2f,%.2f,%.2f"
-    set header  [format $head "LAUNCH" "CAPTURE" "SETUP DELAY" "SETUP SLACK" "HOLD DELAY" "HOLD SLACK"]
+    if { [lsearch $CORES $core] < 0 } {
+        error "parse_sta:: core $core is not in the processor list ($CORES)"
+    }
+    set rpt [::kVutils::file_read $STA_RPT($core)]
+    set csv $STA_CSV($core)
+    ::kVutils::file_init $csv 1
 
-    ::kVutils::file_init $csv
-    ::kVutils::file_write $csv $header
+    #---------------------------------------------------------------------
+    # KeyRing
+    #---------------------------------------------------------------------
+    if { [info exist keyring] } {
+        $keyring destroy
+    }
+    if { $core == "keyv362" } {
+        set keyring [KeyRing create "main" 3 6 2]
+
+    } elseif { $core == "keyv661" } {
+        set keyring [KeyRing create "main" 6 6 1]
+
+    } else {
+        error "parse_sta:: core $core cannot be parsed (keyv362 or keyv661 only)"
+    }
 
     #---------------------------------------------------------------------
     # Parse timing report to find clocks timing (delay + sta)
     #---------------------------------------------------------------------
-    set val_re [subst -nocommands -nobackslashes {\|\s+-?[0-9]+\.?[0-9]*e?-?[0-9]*\s+}]
-    set clk_re [subst -nocommands -nobackslashes {\|\s+C_main_[0-9][0-9]\w+\s+}]
-    set sta_re [subst -nocommands -nobackslashes {${clk_re}${clk_re}${val_re}${val_re}}]
-    set sta    [regexp -all -inline $sta_re $rpt]
+    set click_re [subst -nocommands -nobackslashes {C_main_[0-9][0-9]}]
+    set val_re   [subst -nocommands -nobackslashes {\|\s+-?[0-9]+\.?[0-9]*e?-?[0-9]*\s+}]
+    set clk_re   [subst -nocommands -nobackslashes {\|\s+C_main_[0-9][0-9]_\w+_\w+\s+}]
+    set sta_re   [subst -nocommands -nobackslashes {${clk_re}${clk_re}${val_re}${val_re}}]
+    set sta      [regexp -all -inline $sta_re $rpt]
 
-    #---------------------------------------------------------------------
-    # Create data structure from clocks timing (from::to::setup,hold)
-    #---------------------------------------------------------------------
-    array set keyv_stages {
-        0 F
-        1 D
-        2 R
-        3 E
-        4 M
-        5 W
-    }
-    array set keyv_eus {
-        0 x0
-        1 x1
-        2 x2
-        3 x3
-        4 x4
-        5 x5
-    }
-    set S [array size keyv_stages]
-    set E [array size keyv_eus]
-
-    # KeyRing dependencies
-    foreach {i e} [array get keyv_eus] {
-        foreach {j s} [array get keyv_stages] {
-            dict set keyv_dep ${s}${e} left  $keyv_stages([expr ($j-1)%$S])$keyv_eus([expr ($i)%$E])
-            dict set keyv_dep ${s}${e} right $keyv_stages([expr ($j+1)%$S])$keyv_eus([expr ($i)%$E])
-            dict set keyv_dep ${s}${e} up    $keyv_stages([expr ($j+1)%$S])$keyv_eus([expr ($i-1)%$E])
-            dict set keyv_dep ${s}${e} down  $keyv_stages([expr ($j-1)%$S])$keyv_eus([expr ($i+1)%$E])
+    # Return a formatted version of XU stages: F0 instead of C_main_00
+    proc keyv_click_to_stages click {
+        array set stages {
+            0 F
+            1 D
+            2 R
+            3 E
+            4 M
+            5 W
         }
+        set e [string index [lindex [split $click _] end] 0]
+        set s [string index [lindex [split $click _] end] 1]
+        return "$stages($s)$e"
     }
 
-    # Parse each line of clocks timing information assuming clocks are of the form:
-    # C_main_00_setup_left_capture
+    # Parse each line of clocks timing information
     foreach l $sta {
 
         set dat     [split $l |]
@@ -98,27 +99,28 @@ proc parse_sta csv {
         set delay   [string trim [lindex $dat 3]]
         set slack   [string trim [lindex $dat 4]]
 
-        regexp {[0-9][0-9]} $capture id
-        set e $keyv_eus([string range $id 0 0])
-        set s $keyv_stages([string range $id 1 1])
+        set click [regexp -inline $click_re $capture]
+        set click_s [keyv_click_to_stages $click]
 
-        set dep_launch  [lindex [split $launch _] end-1]
-        set dep_capture [lindex [split $capture _] end-1]
-        set setup_hold  [lindex [split $capture _] end-2]
+        set parent_launch  [regexp -inline {_right_|_left_|_up_|_down_} $launch]
+        set parent_capture [regexp -inline {_right_|_left_|_up_|_down_} $capture]
 
-        if { [string match $dep_launch $dep_capture] } {
-            set from [dict get $keyv_dep ${s}${e} $dep_launch]
+        if { $parent_launch == $parent_capture } {
+            if { [regexp {left|down} $parent_launch] } {
+                set from [$keyring get_parent $click -left]
+            }
+            if { [regexp {up|right} $parent_launch] } {
+                set from [$keyring get_parent $click -up]
+            }
+            set from_s [keyv_click_to_stages $from]
+
             if { [string match *setup* $launch] } {
-                dict set csv_sta ${s}${e} $from setup delay $delay
-                dict set csv_sta ${s}${e} $from setup slack $slack
-                dict set csv_sta ${s}${e} $from hold  delay -1
-                dict set csv_sta ${s}${e} $from hold  slack -1
+                dict set csv_d $click_s $from_s setup delay $delay
+                dict set csv_d $click_s $from_s setup slack $slack
             }
             if { [string match *hold* $launch] } {
-                dict set csv_sta ${s}${e} $from hold  delay $delay
-                dict set csv_sta ${s}${e} $from hold  slack $slack
-                dict set csv_sta ${s}${e} $from setup delay -1
-                dict set csv_sta ${s}${e} $from setup slack -1
+                dict set csv_d $click_s $from_s hold delay $delay
+                dict set csv_d $click_s $from_s hold slack $slack
             }
         }
     }
@@ -126,7 +128,14 @@ proc parse_sta csv {
     #---------------------------------------------------------------------
     # Write data to CSV
     #---------------------------------------------------------------------
-    dict for {capture c} [dict get $csv_sta] {
+    set head    "%s,%s,%s,%s,%s,%s"
+    set content "%s,%s,%.2f,%.2f,%.2f,%.2f"
+    set header  [format $head "LAUNCH" "CAPTURE" "SETUP DELAY" "SETUP SLACK" "HOLD DELAY" "HOLD SLACK"]
+
+    ::kVutils::file_init $csv
+    ::kVutils::file_write $csv $header
+
+    dict for {capture c} [dict get $csv_d] {
         dict for {launch l} [dict get $c] {
             ::kVutils::file_write $csv [format $content                  \
                                                $launch                   \
@@ -140,221 +149,208 @@ proc parse_sta csv {
 }
 
 #-------------------------------------------------------------------------
+# PARSE_AREA
 #
-#                                AREA
-#
+#   Parse area reports and produce csv summaries
 #-------------------------------------------------------------------------
-proc parse_area csv {
+proc parse_area core {
 
+    global MODULES
+    global CORES
     global AREA_RPT
+    global AREA_CSV
 
     #---------------------------------------------------------------------
-    # Init CSV
+    # Init CSV & RPT files
     #---------------------------------------------------------------------
-    set head    "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
-    set content "%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e"
-    set header [format $head "PROCESSOR" "CMB" "BUF" "SEQ" "TOTAL" \
-                    "AR-IDECODE" "AR-PC" "AR-RF" "AR-ALU" "AR-LSU" "AR-SYS" "AR-PERF" \
-                    "AR-RST-SYNC" "AR-KEYRING" "AR-PERF-SYNC" "AR-XBS" \
-                    "AR-XU0" "AR-XU1" "AR-XU2" "AR-XU3" "AR-XU4" "AR-XU5"]
-
-    ::kVutils::file_init $csv
-    ::kVutils::file_write $csv $header
-
-    #---------------------------------------------------------------------
-    # Regexp to parse area report
-    #---------------------------------------------------------------------
-    set val_re           [subst -nocommands -nobackslashes {([0-9]+\.[0-9]+e?-?[0-9]+\s+)}]
-    set area_re(cmb)     [subst -nocommands -nobackslashes {(Combinational area:\s+)${val_re}}]
-    set area_re(inv)     [subst -nocommands -nobackslashes {(Buf/Inv area:\s+)${val_re}}]
-    set area_re(seq)     [subst -nocommands -nobackslashes {(Noncombinational area:\s+)${val_re}}]
-    set area_re(tot)     [subst -nocommands -nobackslashes {(Total cell area:\s+)${val_re}}]
-    set area_re(idecode) [subst -nocommands -nobackslashes {(u_idecode\s+\w+\s+)${val_re}}]
-    set area_re(pc)      [subst -nocommands -nobackslashes {(u_pc\s+\w+\s+)${val_re}}]
-    set area_re(rf)      [subst -nocommands -nobackslashes {(u_rf\s+\w+\s+)${val_re}}]
-    set area_re(alu)     [subst -nocommands -nobackslashes {(u_alu\s+\w+\s+)${val_re}}]
-    set area_re(lsu)     [subst -nocommands -nobackslashes {(u_lsu\s+\w+\s+)${val_re}}]
-    set area_re(sys)     [subst -nocommands -nobackslashes {(u_sys\s+\w+\s+)${val_re}}]
-    set area_re(perf)    [subst -nocommands -nobackslashes {(u_perf\s+\w+\s+)${val_re}}]
-    set area_re(clk_rst) [subst -nocommands -nobackslashes {(u_clock_and_reset\s+\w+\s+)${val_re}}]
-    set area_re(keyring) [subst -nocommands -nobackslashes {(u_keyring\s+\w+\s+)${val_re}}]
-    set area_re(cycle)   [subst -nocommands -nobackslashes {(u_cycle_sync\s+\w+\s+)${val_re}}]
-    set area_re(xbs)     [subst -nocommands -nobackslashes {(u_xbs\s+\w+\s+)${val_re}}]
-    set area_re(xu_0)    [subst -nocommands -nobackslashes {(u_xu_0\s+\w+\s+)${val_re}}]
-    set area_re(xu_1)    [subst -nocommands -nobackslashes {(u_xu_1\s+\w+\s+)${val_re}}]
-    set area_re(xu_2)    [subst -nocommands -nobackslashes {(u_xu_2\s+\w+\s+)${val_re}}]
-    set area_re(xu_3)    [subst -nocommands -nobackslashes {(u_xu_3\s+\w+\s+)${val_re}}]
-    set area_re(xu_4)    [subst -nocommands -nobackslashes {(u_xu_4\s+\w+\s+)${val_re}}]
-    set area_re(xu_5)    [subst -nocommands -nobackslashes {(u_xu_5\s+\w+\s+)${val_re}}]
+    if { [lsearch $CORES $core] < 0 } {
+        error "parse_area:: $core is not in the core list ($CORES)"
+    }
+    if { ![file exists $AREA_RPT($core)] } {
+        error "parse_area:: file $AREA_RPT($core) not found"
+    }
+    set rpt [::kVutils::file_read $AREA_RPT($core)]
+    set csv $AREA_CSV($core)
+    ::kVutils::file_init $csv 1
 
     #---------------------------------------------------------------------
-    # Parse each processor report
+    # Parse area report
     #---------------------------------------------------------------------
-    foreach {p r} [array get AREA_RPT] {
-        if { [file exists $r] } {
-            set rpt [::kVutils::file_read $r]
-            foreach {g re} [array get area_re] {
-                if { [regexp $re $rpt all tmp area] } {
-                    dict set csv_area $p $g [string trim $area]
-                } else {
-                    dict set csv_area $p $g -1
-                }
-            }
+    set val_re          [subst -nocommands -nobackslashes {([0-9]+\.[0-9]+e?-?[0-9]+\s+)}]
+    set glob_re(cmb)    [subst -nocommands -nobackslashes {(Combinational area:\s+)${val_re}}]
+    set glob_re(inv)    [subst -nocommands -nobackslashes {(Buf/Inv area:\s+)${val_re}}]
+    set glob_re(seq)    [subst -nocommands -nobackslashes {(Noncombinational area:\s+)${val_re}}]
+    set glob_re(tot)    [subst -nocommands -nobackslashes {(Total cell area:\s+)${val_re}}]
+    foreach m $MODULES($core) {
+        set module_re($m) [subst -nocommands -nobackslashes {(u_${m}\s+\w+\s+)${val_re}}]
+    }
+
+    # create dict with parsed area values
+    foreach {m re} [array get glob_re] {
+        if { [regexp $re $rpt all tmp area] } {
+            dict set csv_glob $m [string trim $area]
         } else {
-            puts "$r not found"
+            error "parse_area:: module $m not found in $AREA_RPT($core)"
         }
     }
+    foreach {m re} [array get module_re] {
+        if { [regexp $re $rpt all tmp area] } {
+            dict set csv_mod $m [string trim $area]
+        } else {
+            error "parse_area:: module $m not found in $AREA_RPT($core)"
+        }
+    }
+    # core area is total-sum(modules)
+    dict set csv_core core [expr [dict get $csv_glob tot] - [::tcl::mathop::+ {*}[dict values $csv_mod]]]
 
     #---------------------------------------------------------------------
     # Write data to CSV
     #---------------------------------------------------------------------
-    dict for {p d} [dict get $csv_area] {
-        dict with d {
-            ::kVutils::file_write $csv [format $content $p $cmb $inv $seq $tot \
-                                               $idecode $pc $rf $alu $lsu $sys $perf $clk_rst \
-                                               $keyring $cycle $xbs $xu_0 $xu_1 $xu_2 $xu_3 $xu_4 $xu_5]
-        }
+
+    set header  "CORE";
+    set content [format "%.6e" [dict get $csv_core core]]
+    dict for {m a} [dict get $csv_mod] {
+        append header  [format ",%s" [string toupper $m]]
+        append content [format ",%.6e" $a]
     }
+    dict for {m a} [dict get $csv_glob] {
+        append header  [format ",%s" [string toupper $m]]
+        append content [format ",%.6e" $a]
+    }
+    ::kVutils::file_write $csv $header
+    ::kVutils::file_write $csv $content
 }
 
 #-------------------------------------------------------------------------
+# PARSE_BENCHMARKS
 #
-#                              BENCHMARKS
-#
+#   Parse simulation & power reports and produce a benchmark csv summary
 #-------------------------------------------------------------------------
-proc parse_benchmarks csv {
+proc parse_benchmarks core {
 
+    global CORES
+    global MODULES
     global PWR_RPT
     global SIM_RPT
-    global SIM_ADDR_INST
-    global SIM_ADDR_CYCLE
-    global PROCESSORS
-    global BENCHMARKS
-    global PERIOD
+    global BENCH_CSV
 
-    #-------------------------------------------------------------------------
-    # Init CSV
-    #-------------------------------------------------------------------------
-    set head    "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
-    set content "%s,%s,%.6e,%d,%d,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e"
+    set PERIOD     [expr 2e-09]
+    set BENCHMARKS [list dhrystone coremark]
 
-    set header [format $head "PROCESSOR" "BENCHMARK" "PERIOD" "CYCLES" "INSTS" "PWR-TOT" \
-                    "PWR-INT" "PWR-SWITCH" "PWR-LEAK" "PWR-CT" "PWR-SEQ" "PWR-REG" "PWR-CMB" \
-                    "PWR-IDECODE" "PWR-PC" "PWR-RF" "PWR-ALU" "PWR-LSU" "PWR-SYS" "PWR-PERF" \
-                    "PWR-RST-SYNC" "PWR-KEYRING" "PWR-PERF-SYNC" "PWR-XBS" \
-                    "PWR-XU0" "PWR-XU1" "PWR-XU2" "PWR-XU3" "PWR-XU4" "PWR-XU5"]
+    set SIM_ADDR_CYCLE(dhrystone) 2
+    set SIM_ADDR_INST(dhrystone)  3
+    set SIM_ADDR_CYCLE(coremark)  8
+    set SIM_ADDR_INST(coremark)   6
 
-    ::kVutils::file_init $csv
-    ::kVutils::file_write $csv $header
-
-    #-------------------------------------------------------------------------
-    # Regexp to parse power reports
-    #-------------------------------------------------------------------------
-    set val_re          [subst -nocommands -nobackslashes {([0-9]+\.[0-9]+e?-?[0-9]+\s+)}]
-    set pwr_re(ct)      [subst -nocommands -nobackslashes {(clock_network\s+)${val_re}+}]
-    set pwr_re(reg)     [subst -nocommands -nobackslashes {(register\s+)${val_re}+}]
-    set pwr_re(cmb)     [subst -nocommands -nobackslashes {(combinational\s+)${val_re}+}]
-    set pwr_re(seq)     [subst -nocommands -nobackslashes {(sequential\s+)${val_re}+}]
-    set pwr_re(sw)      [subst -nocommands -nobackslashes {(Net Switching Power\s+=\s+)${val_re}}]
-    set pwr_re(int)     [subst -nocommands -nobackslashes {(Cell Internal Power\s+=\s+)${val_re}}]
-    set pwr_re(lk)      [subst -nocommands -nobackslashes {(Cell Leakage Power\s+=\s+)${val_re}}]
-    set pwr_re(tot)     [subst -nocommands -nobackslashes {(Total Power\s+=\s+)${val_re}}]
-    set pwr_re(idecode) [subst -nocommands -nobackslashes {(u_idecode\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(pc)      [subst -nocommands -nobackslashes {(u_pc\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(rf)      [subst -nocommands -nobackslashes {(u_rf\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(alu)     [subst -nocommands -nobackslashes {(u_alu\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(lsu)     [subst -nocommands -nobackslashes {(u_lsu\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(sys)     [subst -nocommands -nobackslashes {(u_sys\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(perf)    [subst -nocommands -nobackslashes {(u_perf\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(clk_rst) [subst -nocommands -nobackslashes {(u_clock_and_reset\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(keyring) [subst -nocommands -nobackslashes {(u_keyring\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(cycle)   [subst -nocommands -nobackslashes {(u_cycle_sync\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(xbs)     [subst -nocommands -nobackslashes {(u_xbs\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(xu_0)    [subst -nocommands -nobackslashes {(u_xu_0\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(xu_1)    [subst -nocommands -nobackslashes {(u_xu_1\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(xu_2)    [subst -nocommands -nobackslashes {(u_xu_2\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(xu_3)    [subst -nocommands -nobackslashes {(u_xu_3\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(xu_4)    [subst -nocommands -nobackslashes {(u_xu_4\s+\(\w+\)\s+)${val_re}+}]
-    set pwr_re(xu_5)    [subst -nocommands -nobackslashes {(u_xu_5\s+\(\w+\)\s+)${val_re}+}]
-
-    #---------------------------------------------------------------------
-    # Parse simulation reports for each benchmark,processor
-    #---------------------------------------------------------------------
-    foreach b $BENCHMARKS {
-        foreach p $PROCESSORS {
-
-            regsub -all {<B>} $SIM_RPT($p) $b rpt_name
-            if { [file exists $rpt_name] } {
-                set rpt [::kVutils::file_read $rpt_name]
-
-                # Cycles
-                set cycle_re [subst -nocommands -nobackslashes {($SIM_ADDR_CYCLE($b):\s+)(\w+)}]
-                regexp $cycle_re $rpt all addr cycles
-                dict set csv_dat $b $p cycles [format %u 0x$cycles]
-
-                # Insts
-                set inst_re [subst -nocommands -nobackslashes {($SIM_ADDR_INST($b):\s+)(\w+)}]
-                regexp $inst_re $rpt all addr insts
-                dict set csv_dat $b $p insts [format %u 0x$insts]
-
-            } else {
-                puts "$rpt_name not found"
-            }
-        }
+    if { [lsearch $CORES $core] < 0 } {
+        error "parse_bechmarks:: $core is not in the core list ($CORES)"
     }
 
-    #---------------------------------------------------------------------
-    # Parse power reports for each benchmark,processor
-    #---------------------------------------------------------------------
-    foreach b $BENCHMARKS {
-        foreach p $PROCESSORS {
+    #-------------------------------------------------------------------------
+    # Parse simulation reports
+    #-------------------------------------------------------------------------
+    foreach bench $BENCHMARKS {
 
-            # Parse power report only if simulation result successfully parsed
-            if { [dict exist [dict get $csv_dat] $b] } {
-                if { [dict exist [dict get $csv_dat $b] $p] } {
+        regsub -all {<B>} $SIM_RPT($core) $bench sim_rpt
+        if { ![file exists $sim_rpt] } {
+            error "parse_benchmarks:: file $sim_rpt not found"
+        }
+        set simrpt [::kVutils::file_read $sim_rpt]
 
-                    regsub -all {<B>} $PWR_RPT($p) $b rpt_name
-                    if { [file exists $rpt_name] } {
-                        set rpt [::kVutils::file_read $rpt_name]
+        # Cycles
+        set cycle_re [subst -nocommands -nobackslashes {($SIM_ADDR_CYCLE($bench):\s+)(\w+)}]
+        regexp $cycle_re $simrpt all addr cycles
+        dict set csv_sim $bench cycles [format %u 0x$cycles]
 
-                        foreach {g r} [array get pwr_re] {
-                            if { [regexp $r $rpt all] } {
-                                dict set csv_dat $b $p $g [string trim [lindex $all end]]
-                            } else {
-                                dict set csv_dat $b $p $g -1
-                            }
-                        }
-                    # If power report does not exist, remove entry $p from dict
-                    } else {
-                        puts "$rpt_name not found"
-                        dict set csv_dat $b [dict remove [dict get $csv_dat $b] $p]
-                    }
+        # Insts
+        set inst_re [subst -nocommands -nobackslashes {($SIM_ADDR_INST($bench):\s+)(\w+)}]
+        regexp $inst_re $simrpt all addr insts
+        dict set csv_sim $bench insts [format %u 0x$insts]
+    }
+
+    #-------------------------------------------------------------------------
+    # Parse power reports
+    #-------------------------------------------------------------------------
+    set val_re          [subst -nocommands -nobackslashes {([0-9]+\.[0-9]+e?-?[0-9]+\s+)}]
+    set glob_re(ct)     [subst -nocommands -nobackslashes {(clock_network\s+)${val_re}+}]
+    set glob_re(reg)    [subst -nocommands -nobackslashes {(register\s+)${val_re}+}]
+    set glob_re(cmb)    [subst -nocommands -nobackslashes {(combinational\s+)${val_re}+}]
+    set glob_re(seq)    [subst -nocommands -nobackslashes {(sequential\s+)${val_re}+}]
+    set glob_re(sw)     [subst -nocommands -nobackslashes {(Net Switching Power\s+=\s+)${val_re}}]
+    set glob_re(int)    [subst -nocommands -nobackslashes {(Cell Internal Power\s+=\s+)${val_re}}]
+    set glob_re(lk)     [subst -nocommands -nobackslashes {(Cell Leakage Power\s+=\s+)${val_re}}]
+    set glob_re(tot)    [subst -nocommands -nobackslashes {(Total Power\s+=\s+)${val_re}}]
+    foreach m $MODULES($core) {
+        set module_re($m) [subst -nocommands -nobackslashes {(u_${m}\s+\(\w+\)\s+)${val_re}+}]
+    }
+
+    foreach bench $BENCHMARKS {
+
+        # Parse power report only if simulation result successfully parsed
+        if { [dict exist [dict get $csv_sim] $bench] } {
+
+            regsub -all {<B>} $PWR_RPT($core) $bench pwr_rpt
+            if { ![file exists $pwr_rpt] } {
+                error "parse_benchmarks:: file $pwr_rpt not found"
+            }
+            set pwrpt [::kVutils::file_read $pwr_rpt]
+
+            foreach {m re} [array get glob_re] {
+                if { [regexp $re $pwrpt all] } {
+                    dict set csv_glob $bench $m [string trim [lindex $all end]]
+                } else {
+                    error "parse_benchmarks:: module $m not found in $pwr_rpt"
                 }
             }
-        }
-        # Remove entry $b from dict if empty
-        if { [dict exist [dict get $csv_dat] $b] } {
-            if { [dict size [dict get $csv_dat $b]] == 0 } {
-                dict set csv_dat [dict remove [dict get $csv_dat] $b]
+            foreach {m re} [array get module_re] {
+                if { [regexp $re $pwrpt all] } {
+                    dict set csv_mod $bench $m [string trim [lindex $all end]]
+                } else {
+                    error "parse_benchmarks:: module $m not found in $pwr_rpt"
+                }
             }
+            # core power is total-sum(modules)
+            set tmod 0
+            dict for {m p} [dict get $csv_mod $bench] {
+                set tmod [expr $tmod + $p]
+            }
+            dict set csv_core $bench core [expr [dict get $csv_glob $bench tot] - $tmod]
         }
     }
 
     #-------------------------------------------------------------------------
     # Write data to CSV
     #-------------------------------------------------------------------------
-    dict for {b dat} [dict get $csv_dat] {
-        dict for {p d} [dict get $dat] {
-            dict with d {
-                ::kVutils::file_write $csv                              \
-                    [format $content $p $b                              \
-                         $PERIOD $cycles $insts                         \
-                         $tot $int $sw $lk                              \
-                         $ct $seq $reg $cmb                             \
-                         $idecode $pc $rf $alu $lsu $sys $perf $clk_rst \
-                         $keyring $cycle $xbs $xu_0 $xu_1 $xu_2 $xu_3 $xu_4 $xu_5]
-            }
+    set csv $BENCH_CSV($core)
+    ::kVutils::file_init $csv 1
+
+    # Header
+    set header "BENCH,CORE";
+    dict for {m c} [dict get $csv_mod $bench] {
+        append header  [format ",%s" [string toupper $m]]
+    }
+    dict for {m c} [dict get $csv_glob $bench] {
+        append header  [format ",%s" [string toupper $m]]
+    }
+    dict for {m c} [dict get $csv_sim $bench] {
+        append header  [format ",%s" [string toupper $m]]
+    }
+    ::kVutils::file_write $csv $header
+
+    # Content
+    foreach bench $BENCHMARKS {
+        set content [format "%s" $bench]
+        append content [format ",%.6e" [dict get $csv_core $bench core]]
+        dict for {m c} [dict get $csv_mod $bench] {
+            append content [format ",%.6e" $c]
         }
+        dict for {m c} [dict get $csv_glob $bench] {
+            append content [format ",%.6e" $c]
+        }
+        dict for {m c} [dict get $csv_sim $bench] {
+            append content [format ",%.6e" $c]
+        }
+        ::kVutils::file_write $csv $content
     }
 }
 
@@ -363,30 +359,54 @@ proc parse_benchmarks csv {
 #                                MAIN
 #
 #-------------------------------------------------------------------------
-set STA_RPT           $::env(KEYV_SYN)/keyv/reports/keyv.syn.timing.rpt
-set AREA_RPT(synv)    $::env(KEYV_SYN)/synv/reports/synv.syn.area.rpt
-set AREA_RPT(synv_cg) $::env(KEYV_SYN)/synv/reports/synv.cg.area.rpt
-set AREA_RPT(keyv)    $::env(KEYV_SYN)/keyv/reports/keyv.syn.area.rpt
-set PWR_RPT(synv)     $::env(KEYV_SYN)/synv/reports/synv.syn.pwr.<B>.rpt
-set PWR_RPT(synv_cg)  $::env(KEYV_SYN)/synv/reports/synv.cg.pwr.<B>.rpt
-set PWR_RPT(keyv)     $::env(KEYV_SYN)/keyv/reports/keyv.syn.pwr.<B>.rpt
-set SIM_RPT(synv)     $::env(KEYV_SIM)/synv/syn/<B>/synv.syn.<B>.iopad.mti
-set SIM_RPT(synv_cg)  $::env(KEYV_SIM)/synv/cg/<B>/synv.cg.<B>.iopad.mti
-set SIM_RPT(keyv)     $::env(KEYV_SIM)/keyv/syn/<B>/keyv.syn.<B>.iopad.mti
+set CORES [list keyv362 keyv661 synv synvcg]
 
-set CSV_BENCH  $::env(KEYV_DATA)/benchmarks_summary.csv
-set CSV_AREA   $::env(KEYV_DATA)/area_summary.csv
-set CSV_STA    $::env(KEYV_DATA)/sta_summary.csv
+set MODULES(synv)    [list idecode pc rf alu lsu sys perf clock_and_reset]
+set MODULES(synvcg)  [list idecode pc rf alu lsu sys perf clock_and_reset]
+set MODULES(keyv362) [list idecode pc rf alu lsu sys perf keyring xbs cycle_sync xu_0 xu_1 xu_2]
+set MODULES(keyv661) [list idecode pc rf alu lsu sys perf keyring xbs cycle_sync xu_0 xu_1 xu_2 xu_3 xu_4 xu_5]
 
-set BENCHMARKS [list dhrystone coremark]
-set PROCESSORS [list synv synv_cg keyv]
-set PERIOD     [expr 2e-09]
+# INPUTS
+set STA_RPT(keyv362)  $::env(KEYV_DATA)/keyv362/keyv362.timing.rpt
+set STA_RPT(keyv661)  $::env(KEYV_DATA)/keyv661/keyv661.timing.rpt
+set STA_RPT(synv)     $::env(KEYV_DATA)/synv/synv.timing.rpt
+set STA_RPT(synvcg)   $::env(KEYV_DATA)/synvcg/synvcg.timing.rpt
+set AREA_RPT(keyv362) $::env(KEYV_DATA)/keyv362/keyv362.area.rpt
+set AREA_RPT(keyv661) $::env(KEYV_DATA)/keyv661/keyv661.area.rpt
+set AREA_RPT(synv)    $::env(KEYV_DATA)/synv/synv.area.rpt
+set AREA_RPT(synvcg)  $::env(KEYV_DATA)/synvcg/synvcg.area.rpt
+set PWR_RPT(keyv362)  $::env(KEYV_DATA)/keyv362/keyv362.pwr.<B>.rpt
+set PWR_RPT(keyv661)  $::env(KEYV_DATA)/keyv661/keyv661.pwr.<B>.rpt
+set PWR_RPT(synv)     $::env(KEYV_DATA)/synv/synv.pwr.<B>.rpt
+set PWR_RPT(synvcg)   $::env(KEYV_DATA)/synvcg/synvcg.pwr.<B>.rpt
+set SIM_RPT(keyv362)  $::env(KEYV_DATA)/keyv362/keyv362.sim.<B>.rpt
+set SIM_RPT(keyv661)  $::env(KEYV_DATA)/keyv661/keyv661.sim.<B>.rpt
+set SIM_RPT(synv)     $::env(KEYV_DATA)/synv/synv.sim.<B>.rpt
+set SIM_RPT(synvcg)   $::env(KEYV_DATA)/synvcg/synvcg.sim.<B>.rpt
 
-set SIM_ADDR_CYCLE(dhrystone) 2
-set SIM_ADDR_INST(dhrystone)  3
-set SIM_ADDR_CYCLE(coremark)  8
-set SIM_ADDR_INST(coremark)   6
+# OUTPUTS
+set BENCH_CSV(keyv362) $::env(KEYV_DATA)/keyv362/keyv362.benchmarks.csv
+set BENCH_CSV(keyv661) $::env(KEYV_DATA)/keyv661/keyv661.benchmarks.csv
+set BENCH_CSV(synv)    $::env(KEYV_DATA)/synv/synv.benchmarks.csv
+set BENCH_CSV(synvcg)  $::env(KEYV_DATA)/synvcg/synvcg.benchmarks.csv
+set AREA_CSV(keyv362)  $::env(KEYV_DATA)/keyv362/keyv362.area.csv
+set AREA_CSV(keyv661)  $::env(KEYV_DATA)/keyv661/keyv661.area.csv
+set AREA_CSV(synv)     $::env(KEYV_DATA)/synv/synv.area.csv
+set AREA_CSV(synvcg)   $::env(KEYV_DATA)/synvcg/synvcg.area.csv
+set STA_CSV(keyv362)   $::env(KEYV_DATA)/keyv362/keyv362.timing.csv
+set STA_CSV(keyv661)   $::env(KEYV_DATA)/keyv661/keyv661.timing.csv
+set STA_CSV(synv)      $::env(KEYV_DATA)/synv/synv.timing.csv
+set STA_CSV(synvcg)    $::env(KEYV_DATA)/synvcg/synvcg.timing.csv
 
-parse_sta $CSV_STA
-parse_area $CSV_AREA
-parse_benchmarks $CSV_BENCH
+parse_area synv
+parse_area synvcg
+parse_area keyv362
+parse_area keyv661
+
+parse_sta keyv661
+parse_sta keyv362
+
+parse_benchmarks synv
+parse_benchmarks synvcg
+parse_benchmarks keyv362
+parse_benchmarks keyv661

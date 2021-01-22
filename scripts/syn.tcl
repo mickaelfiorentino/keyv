@@ -38,10 +38,8 @@ if { $DO_INIT } {
     global SIM_D
     global DESIGN_SRC
     global TIMING_LIB_D
-    global TIMING_LIB_SLOW
-    global TIMING_LIB_FAST
-    global OPERATING_CONDITIONS_MAX
-    global OPERATING_CONDITIONS_MIN
+    global TIMING_LIB
+    global OPCOND
 
     remove_design -all
     file delete -force $LIB_D
@@ -120,7 +118,7 @@ if { $DO_SYN } {
         ::kVsyn::save_report -clock -top $DESIGN -dir $REP_D -name ${DESIGN}.syn.clock
         ::kVsyn::save_report -sta   -top $DESIGN -dir $REP_D -name ${DESIGN}.syn.timing
         ::kVsyn::save_design -netlist -dc -dir $NET_D -name ${DESIGN}.syn
-        ::kVsyn::save_design -sdc -dc -dir $SAV_D -name ${DESIGN}
         ::kVsyn::save_design -ddc -dc -dir $SAV_D -name ${DESIGN}.syn
+        ::kVsyn::save_design -sdc -dc -dir $SAV_D -name ${DESIGN}.syn
     }
 }

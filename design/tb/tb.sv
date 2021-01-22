@@ -29,10 +29,12 @@ module tb ();
      *     - Active low reset
      ***************************************************************************/
     parameter PERIOD = 2000;
-    parameter INTERFACE_DELAY = 870;
     logic rstn = 1'b0;
     logic clk  = 1'b0;
     always #(PERIOD/2) clk = ~clk;
+
+    // parameter INTERFACE_DELAY = 870;
+    parameter INTERFACE_DELAY = 350;
 
     /***************************************************************************
      * DELAYS CONFIGURATION
@@ -63,7 +65,6 @@ module tb ();
                           MU_DELAY_SIM, MU_DELAY_SIM, MU_DELAY_SIM};
         end
     end
-
 
     initial begin
         repeat (5) @(negedge clk);

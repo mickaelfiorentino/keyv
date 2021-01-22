@@ -86,8 +86,8 @@ package keyv_pkg is
   constant KEYRING_E : positive := 6;  -- Number of Execution Unit
   constant KEYRING_S : positive := 6;  -- Number of stages by EU
   constant KEYRING_D : positive := 1;  -- EU Dependency Shift
-  constant KEYRING_L : positive := 30; -- Maximum length of delay-elements(x2)
-  constant KEYRING_P : positive := 16; -- Pulse Width
+  constant KEYRING_L : positive := 20; -- Maximum length of delay-elements(x2)
+  constant KEYRING_P : positive := 12; -- Pulse Width
 
   type keyv_clk is (
     F,    -- Fetch
@@ -144,8 +144,9 @@ package keyv_pkg is
   type keyv_to_click_m is array(0 to KEYRING_E-1) of keyv_to_click_v;
 
   type keyv_from_click is record
-    key : keyv_logic;                   -- Output key
-    clk : keyv_logic;                   -- Clock
+    key_c : keyv_logic;                 -- Output key (clock path)
+    key_d : keyv_logic;                 -- Output key (data path)
+    clk   : keyv_logic;                 -- Clock
   end record keyv_from_click;
 
   type keyv_from_click_v is array(0 to KEYRING_S-1) of keyv_from_click;
